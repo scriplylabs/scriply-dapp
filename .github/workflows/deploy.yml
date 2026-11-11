@@ -1,0 +1,66 @@
+# Builds the receivables pool app (scriply-programs/app) at a pinned commit
+# and publishes it to GitHub Pages. The app's code lives in scriply-programs;
+# this repo only says which version is hosted and what it talks to.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a newer push replaces a queued one, never a running one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  # The scriply-programs commit whose app is hosted. Bump it in a PR to
+  # deploy a newer app.
+  PROGRAMS_REF: 2a00eab7a7613974147713026f48f2785ebf6eb6
+  # The app's settings (scriply-programs/app/README.md), baked in at build.
+  VITE_NETWORK: sol-devnet
+  VITE_RPC_URL: https://api.devnet.solana.com
+  VITE_SNAPSHOT_API_URL: https://api.scriply.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: scriplylabs/scriply-programs
+          ref: ${{ env.PROGRAMS_REF }}
+          path: programs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: programs/app/package-lock.json
+      - name: Install
+        working-directory: programs/app
+        run: npm ci
+      - name: Test
+        working-directory: programs/app
+        run: npm test
+      - name: Build
+        working-directory: programs/app
+        run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: programs/app/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
